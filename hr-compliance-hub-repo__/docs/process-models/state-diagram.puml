@@ -1,0 +1,42 @@
+@startuml State_HR_Document_Lifecycle
+title State Diagram: жизненный цикл кадрового документа (HR Compliance Hub)
+
+[*] --> Draft : HRM публикует событие\n(FR-01)
+
+Draft --> Validating : Hub принимает\nв обработку
+
+Validating --> RequiresManualIntervention : данные невалидны\n(FR-03, UC10)
+Validating --> SentToOperator : данные валидны\n(FR-02)
+
+SentToOperator --> TransitToSFR : оператор ЭДО\nподтвердил приём
+SentToOperator --> RetryScheduled : технический сбой\n(таймаут, 5xx)
+SentToOperator --> RequiresManualIntervention : содержательная ошибка\n(4xx, невалидный сертификат)
+
+TransitToSFR --> ConfirmedBySFR : СФР подтвердил\n(FR-09)
+TransitToSFR --> RetryScheduled : отклонено,\nтехническая причина
+TransitToSFR --> RequiresManualIntervention : отклонено,\nсодержательная причина
+
+RetryScheduled --> SentToOperator : наступил срок retry\nи попытки < 3 (BR-01)
+RetryScheduled --> RequiresManualIntervention : попытки исчерпаны\n(3 из 3)
+
+ConfirmedBySFR --> [*]
+RequiresManualIntervention --> [*] : кадровик исправляет вручную\n(новый цикл = новый Draft)
+
+note right of RetryScheduled
+  BR-01: интервалы 5 мин / 30 мин / 2 часа
+  Применяется только к техническим сбоям
+end note
+
+note right of RequiresManualIntervention
+  Финальное состояние для данного экземпляра.
+  Повторная попытка после ручного исправления —
+  это новый экземпляр документа (Draft),
+  а не переход существующего.
+end note
+
+note right of ConfirmedBySFR
+  Публикуется событие TerminationConfirmedBySFR
+  для HRM и системы расчёта зарплаты (FR-09)
+end note
+
+@enduml

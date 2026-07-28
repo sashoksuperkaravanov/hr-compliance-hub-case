@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                   xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+                   xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+                   id="Definitions_AsIs"
+                   targetNamespace="http://metallinvestholding.ru/bpmn/hr-comply">
+
+  <bpmn:collaboration id="Collaboration_AsIs">
+    <bpmn:participant id="Participant_AsIs" name="Процесс увольнения сотрудника (AS-IS)" processRef="Process_AsIs" />
+    <bpmn:participant id="Participant_Operator" name="Оператор ЭДО" />
+    <bpmn:participant id="Participant_SFR" name="СФР" />
+    <bpmn:messageFlow id="MF1" name="Пакет документов" sourceRef="Task_4" targetRef="Participant_Operator" />
+    <bpmn:messageFlow id="MF2" name="Пакет (транзит)" sourceRef="Participant_Operator" targetRef="Participant_SFR" />
+  </bpmn:collaboration>
+
+
+  <bpmn:process id="Process_AsIs" name="Процесс увольнения сотрудника (AS-IS)" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_AsIs">
+      <bpmn:lane id="Lane_Employee" name="Сотрудник"><bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_Manager" name="Руководитель"><bpmn:flowNodeRef>Task_1</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_HRSpec" name="Кадровый специалист"><bpmn:flowNodeRef>Task_2</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_4</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_2</bpmn:flowNodeRef><bpmn:flowNodeRef>StartEvent_2</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_6</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_3</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_HRM" name="HRM-система"><bpmn:flowNodeRef>Task_3</bpmn:flowNodeRef><bpmn:flowNodeRef>Gateway_1</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_Accounting" name="Бухгалтерия"><bpmn:flowNodeRef>Task_5</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef></bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" name="Подаёт заявление на увольнение"><bpmn:outgoing>SF1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="Task_1" name="Согласовывает увольнение"><bpmn:incoming>SF1</bpmn:incoming><bpmn:outgoing>SF2</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_2" name="Создаёт приказ в HRM"><bpmn:incoming>SF2</bpmn:incoming><bpmn:outgoing>SF3</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_3" name="Формирует пакет документов"><bpmn:incoming>SF3</bpmn:incoming><bpmn:outgoing>SF4</bpmn:outgoing></bpmn:task>
+    <bpmn:parallelGateway id="Gateway_1"><bpmn:incoming>SF4</bpmn:incoming><bpmn:outgoing>SF5</bpmn:outgoing><bpmn:outgoing>SF6</bpmn:outgoing></bpmn:parallelGateway>
+    <bpmn:task id="Task_4" name="Вручную выгружает и передаёт пакет оператору ЭДО"><bpmn:incoming>SF5</bpmn:incoming><bpmn:outgoing>SF8</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_5" name="Производит расчёт при увольнении"><bpmn:incoming>SF6</bpmn:incoming><bpmn:outgoing>SF7</bpmn:outgoing></bpmn:task>
+    <bpmn:endEvent id="EndEvent_1" name="Расчёт завершён"><bpmn:incoming>SF7</bpmn:incoming></bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_2" name="Пакет передан, статус не отслеживается"><bpmn:incoming>SF8</bpmn:incoming></bpmn:endEvent>
+    <bpmn:startEvent id="StartEvent_2" name="Обнаружено расхождение (при проверке/обращении сотрудника)"><bpmn:outgoing>SF9</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="Task_6" name="Расследует причину и готовит повторную подачу"><bpmn:incoming>SF9</bpmn:incoming><bpmn:outgoing>SF10</bpmn:outgoing></bpmn:task>
+    <bpmn:endEvent id="EndEvent_3" name="Повторно отправлено вручную"><bpmn:incoming>SF10</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF1" sourceRef="StartEvent_1" targetRef="Task_1" />
+    <bpmn:sequenceFlow id="SF2" sourceRef="Task_1" targetRef="Task_2" />
+    <bpmn:sequenceFlow id="SF3" sourceRef="Task_2" targetRef="Task_3" />
+    <bpmn:sequenceFlow id="SF4" sourceRef="Task_3" targetRef="Gateway_1" />
+    <bpmn:sequenceFlow id="SF5" sourceRef="Gateway_1" targetRef="Task_4" />
+    <bpmn:sequenceFlow id="SF6" sourceRef="Gateway_1" targetRef="Task_5" />
+    <bpmn:sequenceFlow id="SF7" sourceRef="Task_5" targetRef="EndEvent_1" />
+    <bpmn:sequenceFlow id="SF8" sourceRef="Task_4" targetRef="EndEvent_2" />
+    <bpmn:sequenceFlow id="SF9" sourceRef="StartEvent_2" targetRef="Task_6" />
+    <bpmn:sequenceFlow id="SF10" sourceRef="Task_6" targetRef="EndEvent_3" />
+    <bpmn:textAnnotation id="TA_1"><bpmn:text>Риск: опечатка в СНИЛС/ИНН не валидируется на вводе</bpmn:text></bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TA_2"><bpmn:text>Риск: временной разрыв до нескольких дней между HRM и фактической отправкой</bpmn:text></bpmn:textAnnotation>
+    <bpmn:textAnnotation id="TA_3"><bpmn:text>Риск: расчёт производится без учёта подтверждения СФР</bpmn:text></bpmn:textAnnotation>
+    <bpmn:association id="AS1" sourceRef="Task_2" targetRef="TA_1" />
+    <bpmn:association id="AS2" sourceRef="Task_4" targetRef="TA_2" />
+    <bpmn:association id="AS3" sourceRef="Task_5" targetRef="TA_3" />
+  </bpmn:process>
+
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_AsIs">
+    <bpmndi:BPMNPlane id="BPMNPlane_AsIs" bpmnElement="Collaboration_AsIs">
+      <bpmndi:BPMNShape id="Participant_AsIs_di" bpmnElement="Participant_AsIs" isHorizontal="true"><omgdc:Bounds x="40" y="40" width="1620" height="1000" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Employee_di" bpmnElement="Lane_Employee" isHorizontal="true"><omgdc:Bounds x="70" y="40" width="1550" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Manager_di" bpmnElement="Lane_Manager" isHorizontal="true"><omgdc:Bounds x="70" y="240" width="1550" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_HRSpec_di" bpmnElement="Lane_HRSpec" isHorizontal="true"><omgdc:Bounds x="70" y="440" width="1550" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_HRM_di" bpmnElement="Lane_HRM" isHorizontal="true"><omgdc:Bounds x="70" y="640" width="1550" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Accounting_di" bpmnElement="Lane_Accounting" isHorizontal="true"><omgdc:Bounds x="70" y="840" width="1550" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1"><omgdc:Bounds x="140" y="122" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_1_di" bpmnElement="Task_1"><omgdc:Bounds x="280" y="300" width="110" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_2_di" bpmnElement="Task_2"><omgdc:Bounds x="450" y="500" width="110" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_3_di" bpmnElement="Task_3"><omgdc:Bounds x="620" y="700" width="110" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_1_di" bpmnElement="Gateway_1"><omgdc:Bounds x="790" y="715" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_4_di" bpmnElement="Task_4"><omgdc:Bounds x="900" y="500" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_5_di" bpmnElement="Task_5"><omgdc:Bounds x="1150" y="900" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1"><omgdc:Bounds x="1360" y="922" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_2_di" bpmnElement="EndEvent_2"><omgdc:Bounds x="1110" y="522" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_2_di" bpmnElement="StartEvent_2"><omgdc:Bounds x="1200" y="522" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_6_di" bpmnElement="Task_6"><omgdc:Bounds x="1290" y="500" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_3_di" bpmnElement="EndEvent_3"><omgdc:Bounds x="1490" y="522" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_1_di" bpmnElement="TA_1"><omgdc:Bounds x="450" y="590" width="200" height="45" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_2_di" bpmnElement="TA_2"><omgdc:Bounds x="900" y="590" width="220" height="45" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_3_di" bpmnElement="TA_3"><omgdc:Bounds x="1150" y="990" width="220" height="45" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_Operator_di" bpmnElement="Participant_Operator" isHorizontal="true"><omgdc:Bounds x="40" y="1060" width="1620" height="100" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_SFR_di" bpmnElement="Participant_SFR" isHorizontal="true"><omgdc:Bounds x="40" y="1200" width="1620" height="100" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF1_di" bpmnElement="SF1"><omgdi:waypoint x="158" y="140" /><omgdi:waypoint x="335" y="340" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF2_di" bpmnElement="SF2"><omgdi:waypoint x="335" y="340" /><omgdi:waypoint x="505" y="540" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF3_di" bpmnElement="SF3"><omgdi:waypoint x="505" y="540" /><omgdi:waypoint x="675" y="740" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF4_di" bpmnElement="SF4"><omgdi:waypoint x="675" y="740" /><omgdi:waypoint x="815" y="740" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF5_di" bpmnElement="SF5"><omgdi:waypoint x="815" y="740" /><omgdi:waypoint x="980" y="540" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF6_di" bpmnElement="SF6"><omgdi:waypoint x="815" y="740" /><omgdi:waypoint x="1230" y="940" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF7_di" bpmnElement="SF7"><omgdi:waypoint x="1230" y="940" /><omgdi:waypoint x="1378" y="940" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF8_di" bpmnElement="SF8"><omgdi:waypoint x="980" y="540" /><omgdi:waypoint x="1128" y="540" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF9_di" bpmnElement="SF9"><omgdi:waypoint x="1218" y="540" /><omgdi:waypoint x="1370" y="540" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF10_di" bpmnElement="SF10"><omgdi:waypoint x="1370" y="540" /><omgdi:waypoint x="1508" y="540" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="AS1_di" bpmnElement="AS1"><omgdi:waypoint x="505" y="580" /><omgdi:waypoint x="550" y="590" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="AS2_di" bpmnElement="AS2"><omgdi:waypoint x="980" y="580" /><omgdi:waypoint x="1010" y="590" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="AS3_di" bpmnElement="AS3"><omgdi:waypoint x="1230" y="980" /><omgdi:waypoint x="1260" y="990" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF1_di" bpmnElement="MF1"><omgdi:waypoint x="980" y="580" /><omgdi:waypoint x="980" y="1060" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF2_di" bpmnElement="MF2"><omgdi:waypoint x="980" y="1160" /><omgdi:waypoint x="980" y="1200" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>

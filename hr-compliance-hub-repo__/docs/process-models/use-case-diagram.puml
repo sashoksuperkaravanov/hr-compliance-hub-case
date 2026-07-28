@@ -1,0 +1,61 @@
+@startuml UseCase_HR_Compliance_Hub
+left to right direction
+skinparam packageStyle rect
+skinparam actorStyle awesome
+
+title Use Case диаграмма: HR Compliance Hub
+
+actor "Кадровый специалист" as HRSpec
+actor "Compliance-офицер /\nвнутренний аудитор" as Audit
+actor "ИТ-администратор" as ITAdmin
+
+rectangle "HRM-система" as HRM <<system>>
+rectangle "Оператор ЭДО" as EDO <<system>>
+rectangle "СФР" as SFR <<system>>
+rectangle "Система расчёта зарплаты" as Payroll <<system>>
+
+rectangle "HR Compliance Hub" {
+  usecase "UC1\nПолучить кадровое событие" as UC1
+  usecase "UC2\nВалидировать данные\nкадрового документа" as UC2
+  usecase "UC3\nСформировать и отправить\nпакет оператору ЭДО" as UC3
+  usecase "UC4\nПолучить статус обработки\nот СФР" as UC4
+  usecase "UC5\nВыполнить повторную\nотправку (retry)" as UC5
+  usecase "UC6\nЭскалировать событие\nкадровику" as UC6
+  usecase "UC7\nОпубликовать событие\nподтверждения" as UC7
+  usecase "UC8\nПросмотреть журнал\nстатусов документов" as UC8
+  usecase "UC9\nНастроить параметры\nretry-политики" as UC9
+  usecase "UC10\nПолучить уведомление\nоб ошибке валидации" as UC10
+}
+
+HRM --> UC1
+UC1 ..> UC2 : <<include>>
+
+UC2 .down.> UC10 : <<extend>>\n(данные невалидны)
+HRSpec <-- UC10
+
+UC2 --> UC3 : (данные валидны)
+UC3 --> EDO
+EDO --> SFR
+
+UC3 ..> UC4 : <<include>>
+UC4 <-- SFR
+
+UC4 .down.> UC5 : <<extend>>\n(технический сбой,\nпопытки не исчерпаны)
+UC5 ..> UC3 : <<include>>
+
+UC4 .down.> UC6 : <<extend>>\n(содержательное отклонение\nили попытки исчерпаны)
+UC6 --> HRSpec
+
+UC4 --> UC7 : (подтверждено)
+UC7 --> Payroll
+UC7 --> HRM
+
+Audit --> UC8
+UC8 ..> UC1 : <<include>>
+UC8 ..> UC4 : <<include>>
+UC8 ..> UC7 : <<include>>
+
+ITAdmin --> UC9
+UC9 ..> UC5 : <<include>>
+
+@enduml

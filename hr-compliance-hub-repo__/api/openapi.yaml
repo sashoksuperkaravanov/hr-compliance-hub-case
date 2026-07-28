@@ -1,0 +1,496 @@
+openapi: 3.1.0
+info:
+  title: HR Compliance Hub API
+  description: >
+    Контракт REST-API, экспонируемого HR Compliance Hub для трёх сценариев:
+    приём статуса от оператора ЭДО (webhook), просмотр журнала статусов
+    (Compliance-офицер, UC8) и настройка retry-политики (ИТ-администратор, UC9).
+    Обмен событиями HRM <-> Hub <-> система расчёта ЗП происходит через шину
+    сообщений (Kafka) и в данный контракт не входит — см. Component Diagram (C4 L2).
+  version: 1.0.0
+  contact:
+    name: HR Compliance Hub — команда интеграции
+
+servers:
+  - url: https://hr-compliance-hub.metallinvestholding.internal/api
+    description: Внутренний контур холдинга (не публичный интернет)
+
+tags:
+  - name: webhooks
+    description: Приём асинхронных статусов от внешних систем (FR-07)
+  - name: journal
+    description: Журнал статусов кадровых документов (UC8, FR-11, FR-13)
+  - name: config
+    description: Конфигурация retry-политики (UC9, FR-12)
+
+paths:
+  /v1/webhooks/edo-status:
+    post:
+      tags: [webhooks]
+      operationId: receiveEdoStatus
+      summary: Приём статуса обработки документа от оператора ЭДО (транзитом от СФР)
+      description: >
+        Реализует FR-07. Источник вызова — Оператор ЭДО (см. Context Diagram,
+        message flow MF3). Идемпотентен по `correlation_id` + `status` (NFR-05,
+        NFR-03): повторная доставка одного и того же статуса не создаёт
+        дублирующего эффекта — возвращается 200 без повторной публикации
+        внутреннего события.
+      security:
+        - mtlsOperator: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EdoStatusWebhookPayload'
+            examples:
+              confirmed:
+                summary: СФР подтвердил приём сведений
+                value:
+                  correlation_id: "b3f1e2a0-5c1e-4b1a-9d2e-1a2b3c4d5e6f"
+                  status: confirmed
+                  error_code: null
+                  error_message: null
+                  sfr_received_at: "2026-07-28T09:14:03Z"
+              rejected_technical:
+                summary: Технический сбой на стороне СФР
+                value:
+                  correlation_id: "b3f1e2a0-5c1e-4b1a-9d2e-1a2b3c4d5e6f"
+                  status: rejected_technical
+                  error_code: "SFR_TIMEOUT"
+                  error_message: "Превышено время ожидания обработки на стороне СФР"
+                  sfr_received_at: null
+              rejected_content:
+                summary: Содержательное отклонение — СНИЛС не найден в реестре
+                value:
+                  correlation_id: "b3f1e2a0-5c1e-4b1a-9d2e-1a2b3c4d5e6f"
+                  status: rejected_content
+                  error_code: "SNILS_NOT_FOUND"
+                  error_message: "СНИЛС не найден в реестре застрахованных лиц"
+                  sfr_received_at: "2026-07-28T09:14:03Z"
+      responses:
+        '200':
+          description: >
+            Статус принят и обработан (или это подтверждённый дубликат ранее
+            обработанного статуса — обрабатывается идемпотентно, без ошибки).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAck'
+        '400':
+          description: Некорректный формат payload (не прошла валидация схемы)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: >
+            `correlation_id` не найден среди документов Hub — попадает в
+            карантинную очередь (см. Use Case Spec UC4, исключение E3),
+            не является ошибкой клиента в строгом смысле, но требует внимания
+            ИТ-администратора.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/documents:
+    get:
+      tags: [journal]
+      operationId: listDocuments
+      summary: Список кадровых документов с фильтрацией (UC8)
+      description: >
+        Реализует FR-11. Доступ разграничен по ролям (NFR-08): роль
+        `hr_specialist` видит только документы своей площадки, роль
+        `compliance_officer` — все документы холдинга.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DocumentStatus'
+        - name: facility_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: document_type
+          in: query
+          schema:
+            type: string
+            enum: [hiring, dismissal, transfer]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Список документов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HRDocument'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        '403':
+          description: Недостаточно прав для запрошенной выборки (NFR-08)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/documents/{documentId}:
+    get:
+      tags: [journal]
+      operationId: getDocument
+      summary: Детальная карточка кадрового документа
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Документ найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HRDocument'
+        '403':
+          description: Документ вне зоны доступа роли (NFR-08)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Документ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/documents/{documentId}/attempts:
+    get:
+      tags: [journal]
+      operationId: listDeliveryAttempts
+      summary: История попыток отправки документа (FR-13, BR-01)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Список попыток, отсортированный по attempt_number
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeliveryAttempt'
+        '404':
+          description: Документ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/documents/{documentId}/status-log:
+    get:
+      tags: [journal]
+      operationId: listStatusChangeLog
+      summary: Неизменяемый журнал изменений статуса документа (NFR-10)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Журнал изменений, отсортированный по changed_at
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusChangeLogEntry'
+
+  /v1/config/retry-policy:
+    get:
+      tags: [config]
+      operationId: getRetryPolicy
+      summary: Текущая retry-политика (UC9)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Действующая конфигурация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetryPolicyConfig'
+    put:
+      tags: [config]
+      operationId: updateRetryPolicy
+      summary: Изменить retry-политику (UC9, FR-12)
+      description: >
+        Доступно только роли `it_admin` (NFR-08). Создаёт новую версию
+        конфигурации (см. ER-модель — таблица версионируется, а не
+        перезаписывается), не влияет на уже запланированные попытки
+        по документам, для которых retry уже поставлен в очередь.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetryPolicyConfigInput'
+      responses:
+        '200':
+          description: Конфигурация обновлена, возвращена новая версия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetryPolicyConfig'
+        '400':
+          description: Некорректные значения (например, max_attempts < 1)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Роль вызывающего не `it_admin`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Внутренний SSO холдинга. Claim `role` определяет RBAC (NFR-08):
+        hr_specialist | compliance_officer | it_admin.
+    mtlsOperator:
+      type: mutualTLS
+      description: >
+        Взаимная TLS-аутентификация с сертификатом оператора ЭДО —
+        альтернатива статичному API-ключу для входящих webhook, снижает
+        риск компрометации канала (дополняет NFR-07).
+
+  schemas:
+    DocumentStatus:
+      type: string
+      description: Соответствует состояниям State Diagram (10_state_diagram_document_lifecycle.puml)
+      enum:
+        - draft
+        - validating
+        - sent_to_operator
+        - transit_to_sfr
+        - confirmed_by_sfr
+        - retry_scheduled
+        - requires_manual_intervention
+
+    HRDocument:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        document_type:
+          type: string
+          enum: [hiring, dismissal, transfer]
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        order_number:
+          type: string
+        order_date:
+          type: string
+          format: date
+        correlation_id:
+          type: string
+          format: uuid
+        attempt_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, employee_id, document_type, status, correlation_id]
+
+    DeliveryAttempt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        attempt_number:
+          type: integer
+        sent_at:
+          type: string
+          format: date-time
+        response_received_at:
+          type: string
+          format: date-time
+          nullable: true
+        outcome:
+          type: string
+          enum: [pending, confirmed, technical_failure, content_rejected]
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    StatusChangeLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        old_status:
+          $ref: '#/components/schemas/DocumentStatus'
+        new_status:
+          $ref: '#/components/schemas/DocumentStatus'
+        changed_at:
+          type: string
+          format: date-time
+        changed_by_user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: NULL — изменение выполнено системой автоматически
+        reason:
+          type: string
+          nullable: true
+
+    EdoStatusWebhookPayload:
+      type: object
+      description: >
+        Payload webhook от оператора ЭДО. `status` соответствует классификации
+        FR-06 (технический/содержательный отказ либо подтверждение).
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [confirmed, rejected_technical, rejected_content]
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        sfr_received_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [correlation_id, status]
+
+    WebhookAck:
+      type: object
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        processed:
+          type: boolean
+        duplicate:
+          type: boolean
+          description: true — статус уже был обработан ранее (идемпотентная обработка, NFR-05)
+
+    RetryPolicyConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        max_attempts:
+          type: integer
+          example: 3
+        interval_1_minutes:
+          type: integer
+          example: 5
+        interval_2_minutes:
+          type: integer
+          example: 30
+        interval_3_minutes:
+          type: integer
+          example: 120
+        updated_by_user_id:
+          type: string
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time
+
+    RetryPolicyConfigInput:
+      type: object
+      properties:
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 10
+        interval_1_minutes:
+          type: integer
+          minimum: 1
+        interval_2_minutes:
+          type: integer
+          minimum: 1
+        interval_3_minutes:
+          type: integer
+          minimum: 1
+      required: [max_attempts, interval_1_minutes, interval_2_minutes, interval_3_minutes]
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required: [code, message]

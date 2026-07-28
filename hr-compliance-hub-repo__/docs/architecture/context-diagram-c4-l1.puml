@@ -1,0 +1,38 @@
+@startuml Context_HR_Compliance_Hub
+left to right direction
+skinparam packageStyle rect
+skinparam actorStyle awesome
+
+title Context Diagram (C4 Level 1): HR Compliance Hub
+
+actor "Кадровый специалист" as HRSpec
+actor "Compliance-офицер /\nвнутренний аудитор" as Audit
+actor "ИТ-администратор" as ITAdmin
+
+rectangle "HR Compliance Hub\n<<система в разработке>>\n--\nИнтеграционный сервис,\nустраняющий рассинхрон\nHRM <-> СФР" as Hub #LightSteelBlue
+
+rectangle "HRM-система\n<<внешняя система>>\n--\nИсточник кадровых событий" as HRM
+rectangle "Оператор ЭДО\n<<внешняя система>>\n--\nДоставка пакетов в СФР" as EDO
+rectangle "СФР\n<<внешняя система, гос.>>\n--\nГосударственный реестр\nтрудовой деятельности" as SFR
+rectangle "Система расчёта зарплаты\n<<внешняя система>>\n--\nПолучатель события\nподтверждения" as Payroll
+
+HRSpec --> Hub : оформляет приказ\nв HRM (косвенно)
+Audit --> Hub : просматривает журнал\nстатусов
+ITAdmin --> Hub : настраивает\nretry-политику
+
+Hub --> HRM : подписывается\nна события
+Hub --> EDO : отправляет пакет\nдокументов
+EDO --> SFR : транзит пакета
+SFR ..> EDO : статус обработки\n(webhook)
+EDO ..> Hub : статус обработки\n(транзит)
+Hub --> Payroll : публикует событие\nподтверждения
+
+note right of Hub
+  Границы системы (scope фазы 2):
+  всё, что внутри рамки Hub, детализируется
+  далее в Container Diagram (C4 L2).
+  Внешние системы и акторы — заданы,
+  их внутреннее устройство не моделируется.
+end note
+
+@enduml

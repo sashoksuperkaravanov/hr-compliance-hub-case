@@ -1,0 +1,88 @@
+@startuml ER_HR_Compliance_Hub
+title ER-диаграмма: HR Compliance Hub
+hide circle
+skinparam linetype ortho
+
+entity "Facility\n(производственная площадка)" as Facility {
+  * id : uuid <<PK>>
+  --
+  name : varchar(200)
+  is_shift_site : boolean
+  timezone : varchar(50)
+}
+
+entity "Employee\n(сотрудник)" as Employee {
+  * id : uuid <<PK>>
+  --
+  facility_id : uuid <<FK>>
+  full_name : varchar(300)
+  snils : varchar(14)
+  inn : varchar(12)
+  employment_type : varchar(30)
+}
+
+entity "User\n(пользователь системы)" as User {
+  * id : uuid <<PK>>
+  --
+  full_name : varchar(300)
+  role : varchar(30)
+  facility_id : uuid <<FK, nullable>>
+}
+
+entity "HRDocument\n(кадровый документ)" as HRDocument {
+  * id : uuid <<PK>>
+  --
+  employee_id : uuid <<FK>>
+  document_type : varchar(30)
+  status : varchar(40)
+  order_number : varchar(50)
+  order_date : date
+  correlation_id : uuid <<UNIQUE>>
+  attempt_count : integer
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "DeliveryAttempt\n(попытка отправки)" as DeliveryAttempt {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  attempt_number : integer
+  sent_at : timestamptz
+  response_received_at : timestamptz <<nullable>>
+  outcome : varchar(30)
+  error_code : varchar(50) <<nullable>>
+  error_message : text <<nullable>>
+}
+
+entity "StatusChangeLog\n(журнал изменений, append-only)" as StatusChangeLog {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  old_status : varchar(40)
+  new_status : varchar(40)
+  changed_at : timestamptz
+  changed_by_user_id : uuid <<FK, nullable>>
+  reason : text <<nullable>>
+}
+
+entity "RetryPolicyConfig\n(конфигурация retry)" as RetryPolicyConfig {
+  * id : uuid <<PK>>
+  --
+  max_attempts : integer
+  interval_1_minutes : integer
+  interval_2_minutes : integer
+  interval_3_minutes : integer
+  updated_by_user_id : uuid <<FK>>
+  updated_at : timestamptz
+}
+
+Facility ||--o{ Employee : находится на
+Employee ||--o{ HRDocument : является субъектом
+HRDocument ||--o{ DeliveryAttempt : содержит попытки
+HRDocument ||--o{ StatusChangeLog : содержит историю статусов
+User ||--o{ StatusChangeLog : инициирует (nullable, если система)
+User ||--o{ RetryPolicyConfig : настраивает
+Facility ||--o{ User : работает на (nullable)
+
+@enduml

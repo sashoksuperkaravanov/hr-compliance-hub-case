@@ -1,0 +1,62 @@
+@startuml Component_HR_Compliance_Hub
+title Component/Container Diagram (C4 Level 2): HR Compliance Hub
+left to right direction
+skinparam componentStyle rectangle
+
+actor "Кадровый специалист" as HRSpec
+actor "Compliance-офицер" as Audit
+actor "ИТ-администратор" as ITAdmin
+
+rectangle "HRM-система" as HRM
+rectangle "Оператор ЭДО" as EDO
+rectangle "СФР" as SFR
+rectangle "Система расчёта ЗП" as Payroll
+
+queue "Message Bus\n(Kafka)" as Bus
+
+package "HR Compliance Hub" {
+  component "Event Ingestion\nService" as Ingestion
+  component "Validation\nService" as Validation
+  component "Dispatch\nService" as Dispatch
+  component "Retry\nScheduler" as Retry
+  component "Status Webhook\nReceiver" as WebhookRecv
+  component "Escalation\nNotifier" as Escalation
+  component "Event\nPublisher" as Publisher
+  component "Journal API" as Journal
+  component "Retry Policy\nConfig Service" as Config
+  database "Document Store\n(PostgreSQL)" as DB
+}
+
+HRM --> Bus : публикует\nEmployeeTerminated
+Bus --> Ingestion : consume (FR-01)
+Ingestion --> DB : создаёт документ\n(status=Draft)
+Ingestion --> Validation : передаёт на валидацию
+
+Validation --> DB : обновляет статус\n(FR-02)
+Validation --> Dispatch : данные валидны
+Validation --> Escalation : данные невалидны\n(UC10, FR-03)
+
+Dispatch --> EDO : отправляет пакет + ЭЦП\n(FR-04)
+Dispatch --> DB : статус =\nSentToOperator
+
+EDO --> WebhookRecv : статус обработки\n(webhook, FR-07)
+WebhookRecv --> DB : обновляет статус\n(идемпотентно, NFR-05)
+WebhookRecv --> Retry : технический сбой\n(FR-06)
+WebhookRecv --> Escalation : содержательный\nотказ (FR-06)
+WebhookRecv --> Publisher : подтверждено
+
+Retry --> Dispatch : повторная\nотправка (BR-01)
+Retry --> Escalation : попытки\nисчерпаны
+Config --> Retry : параметры\nretry-политики (FR-12)
+
+Publisher --> Bus : публикует\nTerminationConfirmedBySFR (FR-09)
+Bus --> HRM
+Bus --> Payroll
+
+Escalation --> HRSpec : уведомление\n(NFR-06, ≤15 мин)
+
+Journal --> DB : читает журнал\nстатусов (FR-11)
+Audit --> Journal : просматривает\n(RBAC, NFR-08)
+ITAdmin --> Config : настраивает\n(UC9)
+
+@enduml

@@ -1,0 +1,72 @@
+@startuml Sequence_Send_Retry_Escalate
+title Sequence Diagram: отправка, retry и эскалация (UC3+UC5+UC4+UC6)
+
+actor "Кадровик" as HRSpec
+participant "HRM-система" as HRM
+participant "HR Compliance Hub" as Hub
+participant "Оператор ЭДО" as EDO
+participant "СФР" as SFR
+participant "Система расчёта ЗП" as Payroll
+
+HRSpec -> HRM : оформляет приказ об увольнении
+HRM -> Hub : событие EmployeeTerminated\n(асинхронно, шина сообщений)
+activate Hub
+
+Hub -> Hub : валидирует данные (UC2, FR-02)
+
+alt данные невалидны
+  Hub -> HRSpec : уведомление об ошибке\n(UC10, немедленно, без retry)
+else данные валидны
+  loop до 3 попыток (BR-01)
+    Hub -> EDO : отправляет пакет документов + ЭЦП
+    activate EDO
+
+    alt отправка выполнена успешно (sync ack получен)
+      EDO --> Hub : подтверждение приёма (sync)
+      Hub -> Hub : статус = "Передан в СФР"
+      EDO -> SFR : транзит пакета
+      activate SFR
+      SFR --> EDO : статус обработки (webhook, async)
+      deactivate SFR
+      EDO --> Hub : статус обработки (транзит)
+      deactivate EDO
+
+      alt статус = подтверждено
+        Hub -> HRM : публикует TerminationConfirmedBySFR
+        Hub -> Payroll : публикует TerminationConfirmedBySFR
+        break
+          note over Hub : успешное завершение —\nдокумент подтверждён СФР
+        end
+      else отклонено, содержательная причина
+        Hub -> HRSpec : эскалация немедленно\n(UC6, без retry — BR-01)
+        break
+          note over Hub : выход из цикла —\nсодержательные отклонения\nretry не подлежат
+        end
+      else отклонено, техническая причина
+        Hub -> Hub : планирует следующую попытку\n(5 мин / 30 мин / 2 часа)
+        note over Hub : возврат к началу цикла,\nесли попытки < 3
+      end
+
+    else технический сбой самой отправки\n(таймаут, 5xx на вызове к оператору)
+      deactivate EDO
+      Hub -> Hub : классифицирует как\nтехнический сбой (FR-06)
+      Hub -> Hub : планирует следующую попытку\n(5 мин / 30 мин / 2 часа)
+      note over Hub : та же ветка BR-01,\nчто и при отклонении СФР
+
+    else содержательная ошибка при отправке\n(4xx, невалидный сертификат ЭЦП)
+      deactivate EDO
+      Hub -> HRSpec : эскалация немедленно\n(UC6, без retry — E1 в UC3)
+      break
+        note over Hub : выход из цикла —\nповторная отправка без исправления\nсертификата бессмысленна
+      end
+    end
+  end
+
+  opt после 3-й неудачной технической попытки\n(отправка ИЛИ статус СФР)
+    Hub -> HRSpec : эскалация\n(попытки исчерпаны, UC6)
+  end
+end
+
+deactivate Hub
+
+@enduml

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                   xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+                   xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+                   id="Definitions_ToBe"
+                   targetNamespace="http://metallinvestholding.ru/bpmn/hr-comply">
+
+  <bpmn:collaboration id="Collaboration_ToBe">
+    <bpmn:participant id="Participant_ToBe" name="Процесс увольнения сотрудника (TO-BE)" processRef="Process_ToBe" />
+    <bpmn:participant id="Participant_Operator2" name="Оператор ЭДО" />
+    <bpmn:participant id="Participant_SFR2" name="СФР" />
+    <bpmn:messageFlow id="MF1" name="Пакет документов" sourceRef="Task_Send" targetRef="Participant_Operator2" />
+    <bpmn:messageFlow id="MF2" name="Пакет (транзит)" sourceRef="Participant_Operator2" targetRef="Participant_SFR2" />
+    <bpmn:messageFlow id="MF3" name="Статус обработки (webhook)" sourceRef="Participant_SFR2" targetRef="Catch_2" />
+  </bpmn:collaboration>
+
+
+  <bpmn:process id="Process_ToBe" name="Процесс увольнения сотрудника (TO-BE)" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_ToBe">
+      <bpmn:lane id="Lane_HRSpec2" name="Кадровый специалист"><bpmn:flowNodeRef>Task_A</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_A_start</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_HRM2" name="HRM-система"><bpmn:flowNodeRef>Task_B</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_Hub" name="HR Compliance Hub"><bpmn:flowNodeRef>Catch_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_C</bpmn:flowNodeRef><bpmn:flowNodeRef>Gateway_Valid</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Send</bpmn:flowNodeRef><bpmn:flowNodeRef>Gateway_SendResult</bpmn:flowNodeRef><bpmn:flowNodeRef>Catch_2</bpmn:flowNodeRef><bpmn:flowNodeRef>Gateway_Status</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_PublishConfirmed</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_NotifyError</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_Error</bpmn:flowNodeRef><bpmn:flowNodeRef>Gateway_Technical</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Escalate</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_Escalated</bpmn:flowNodeRef></bpmn:lane>
+      <bpmn:lane id="Lane_Accounting2" name="Бухгалтерия"><bpmn:flowNodeRef>Task_FinalCalc</bpmn:flowNodeRef><bpmn:flowNodeRef>EndEvent_Success</bpmn:flowNodeRef></bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Task_A_start" name="Приказ согласован"><bpmn:outgoing>SF0</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:sequenceFlow id="SF0" sourceRef="Task_A_start" targetRef="Task_A" />
+    <bpmn:task id="Task_A" name="Оформляет приказ об увольнении в HRM"><bpmn:outgoing>SF1</bpmn:outgoing></bpmn:task>
+    <bpmn:serviceTask id="Task_B" name="Публикует событие EmployeeTerminated"><bpmn:incoming>SF1</bpmn:incoming><bpmn:outgoing>SF2</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:intermediateCatchEvent id="Catch_1" name="Получает событие"><bpmn:incoming>SF2</bpmn:incoming><bpmn:outgoing>SF3</bpmn:outgoing><bpmn:messageEventDefinition /></bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="Task_C" name="Валидирует данные (СНИЛС, обязательные поля)"><bpmn:incoming>SF3</bpmn:incoming><bpmn:outgoing>SF4</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_Valid" name="Данные валидны?"><bpmn:incoming>SF4</bpmn:incoming><bpmn:outgoing>SF5</bpmn:outgoing><bpmn:outgoing>SF7</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Send" name="Формирует и отправляет пакет оператору ЭДО"><bpmn:incoming>SF7</bpmn:incoming><bpmn:incoming>SF14</bpmn:incoming><bpmn:outgoing>SF8</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_SendResult" name="Отправка выполнена?"><bpmn:incoming>SF8</bpmn:incoming><bpmn:outgoing>SF17</bpmn:outgoing><bpmn:outgoing>SF18</bpmn:outgoing><bpmn:outgoing>SF19</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:intermediateCatchEvent id="Catch_2" name="Получает статус от СФР"><bpmn:incoming>SF17</bpmn:incoming><bpmn:outgoing>SF9</bpmn:outgoing><bpmn:messageEventDefinition /></bpmn:intermediateCatchEvent>
+    <bpmn:exclusiveGateway id="Gateway_Status" name="Статус от СФР?"><bpmn:incoming>SF9</bpmn:incoming><bpmn:outgoing>SF10</bpmn:outgoing><bpmn:outgoing>SF13</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_PublishConfirmed" name="Публикует событие TerminationConfirmedBySFR"><bpmn:incoming>SF10</bpmn:incoming><bpmn:outgoing>SF11</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:userTask id="Task_NotifyError" name="Уведомляет кадровика об ошибке валидации"><bpmn:incoming>SF5</bpmn:incoming><bpmn:outgoing>SF6</bpmn:outgoing></bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_Error" name="Ошибка возвращена кадровику"><bpmn:incoming>SF6</bpmn:incoming></bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Gateway_Technical" name="Технический сбой (не содержательное отклонение)?"><bpmn:incoming>SF18</bpmn:incoming><bpmn:incoming>SF13</bpmn:incoming><bpmn:outgoing>SF14</bpmn:outgoing><bpmn:outgoing>SF15</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_Escalate" name="Эскалирует кадровику (попытки исчерпаны)"><bpmn:incoming>SF19</bpmn:incoming><bpmn:incoming>SF15</bpmn:incoming><bpmn:outgoing>SF16</bpmn:outgoing></bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_Escalated" name="Событие эскалировано кадровику"><bpmn:incoming>SF16</bpmn:incoming></bpmn:endEvent>
+    <bpmn:serviceTask id="Task_FinalCalc" name="Запускает финальный расчёт при увольнении"><bpmn:incoming>SF11</bpmn:incoming><bpmn:outgoing>SF12</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_Success" name="Расчёт произведён, документ подтверждён СФР"><bpmn:incoming>SF12</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF1" sourceRef="Task_A" targetRef="Task_B" />
+    <bpmn:sequenceFlow id="SF2" sourceRef="Task_B" targetRef="Catch_1" />
+    <bpmn:sequenceFlow id="SF3" sourceRef="Catch_1" targetRef="Task_C" />
+    <bpmn:sequenceFlow id="SF4" sourceRef="Task_C" targetRef="Gateway_Valid" />
+    <bpmn:sequenceFlow id="SF5" name="нет" sourceRef="Gateway_Valid" targetRef="Task_NotifyError" />
+    <bpmn:sequenceFlow id="SF6" sourceRef="Task_NotifyError" targetRef="EndEvent_Error" />
+    <bpmn:sequenceFlow id="SF7" name="да" sourceRef="Gateway_Valid" targetRef="Task_Send" />
+    <bpmn:sequenceFlow id="SF8" sourceRef="Task_Send" targetRef="Gateway_SendResult" />
+    <bpmn:sequenceFlow id="SF17" name="успех" sourceRef="Gateway_SendResult" targetRef="Catch_2" />
+    <bpmn:sequenceFlow id="SF18" name="технический сбой при отправке" sourceRef="Gateway_SendResult" targetRef="Gateway_Technical" />
+    <bpmn:sequenceFlow id="SF19" name="содержательная ошибка при отправке" sourceRef="Gateway_SendResult" targetRef="Task_Escalate" />
+    <bpmn:sequenceFlow id="SF9" sourceRef="Catch_2" targetRef="Gateway_Status" />
+    <bpmn:sequenceFlow id="SF10" name="подтверждено" sourceRef="Gateway_Status" targetRef="Task_PublishConfirmed" />
+    <bpmn:sequenceFlow id="SF11" sourceRef="Task_PublishConfirmed" targetRef="Task_FinalCalc" />
+    <bpmn:sequenceFlow id="SF12" sourceRef="Task_FinalCalc" targetRef="EndEvent_Success" />
+    <bpmn:sequenceFlow id="SF13" name="отклонено" sourceRef="Gateway_Status" targetRef="Gateway_Technical" />
+    <bpmn:sequenceFlow id="SF14" name="да, попытки есть (retry)" sourceRef="Gateway_Technical" targetRef="Task_Send" />
+    <bpmn:sequenceFlow id="SF15" name="нет / попытки исчерпаны" sourceRef="Gateway_Technical" targetRef="Task_Escalate" />
+    <bpmn:sequenceFlow id="SF16" sourceRef="Task_Escalate" targetRef="EndEvent_Escalated" />
+  </bpmn:process>
+
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_ToBe">
+    <bpmndi:BPMNPlane id="BPMNPlane_ToBe" bpmnElement="Collaboration_ToBe">
+      <bpmndi:BPMNShape id="Participant_ToBe_di" bpmnElement="Participant_ToBe" isHorizontal="true"><omgdc:Bounds x="40" y="40" width="2000" height="880" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_HRSpec2_di" bpmnElement="Lane_HRSpec2" isHorizontal="true"><omgdc:Bounds x="70" y="40" width="1930" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_HRM2_di" bpmnElement="Lane_HRM2" isHorizontal="true"><omgdc:Bounds x="70" y="240" width="1930" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Hub_di" bpmnElement="Lane_Hub" isHorizontal="true"><omgdc:Bounds x="70" y="440" width="1930" height="280" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Accounting2_di" bpmnElement="Lane_Accounting2" isHorizontal="true"><omgdc:Bounds x="70" y="720" width="1930" height="200" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_A_start_di" bpmnElement="Task_A_start"><omgdc:Bounds x="60" y="122" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_A_di" bpmnElement="Task_A"><omgdc:Bounds x="140" y="100" width="140" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_B_di" bpmnElement="Task_B"><omgdc:Bounds x="340" y="300" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_1_di" bpmnElement="Catch_1"><omgdc:Bounds x="540" y="502" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_C_di" bpmnElement="Task_C"><omgdc:Bounds x="620" y="480" width="140" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Valid_di" bpmnElement="Gateway_Valid"><omgdc:Bounds x="800" y="495" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Send_di" bpmnElement="Task_Send"><omgdc:Bounds x="890" y="480" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_SendResult_di" bpmnElement="Gateway_SendResult"><omgdc:Bounds x="1070" y="495" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_2_di" bpmnElement="Catch_2"><omgdc:Bounds x="1240" y="502" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Status_di" bpmnElement="Gateway_Status"><omgdc:Bounds x="1320" y="495" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PublishConfirmed_di" bpmnElement="Task_PublishConfirmed"><omgdc:Bounds x="1610" y="480" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyError_di" bpmnElement="Task_NotifyError"><omgdc:Bounds x="560" y="600" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Error_di" bpmnElement="EndEvent_Error"><omgdc:Bounds x="760" y="622" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Technical_di" bpmnElement="Gateway_Technical"><omgdc:Bounds x="1320" y="615" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Escalate_di" bpmnElement="Task_Escalate"><omgdc:Bounds x="1430" y="600" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Escalated_di" bpmnElement="EndEvent_Escalated"><omgdc:Bounds x="1640" y="622" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_FinalCalc_di" bpmnElement="Task_FinalCalc"><omgdc:Bounds x="1610" y="780" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Success_di" bpmnElement="EndEvent_Success"><omgdc:Bounds x="1830" y="802" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_Operator2_di" bpmnElement="Participant_Operator2" isHorizontal="true"><omgdc:Bounds x="40" y="960" width="2000" height="100" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_SFR2_di" bpmnElement="Participant_SFR2" isHorizontal="true"><omgdc:Bounds x="40" y="1100" width="2000" height="100" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="SF0_di" bpmnElement="SF0"><omgdi:waypoint x="96" y="140" /><omgdi:waypoint x="140" y="140" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF1_di" bpmnElement="SF1"><omgdi:waypoint x="210" y="140" /><omgdi:waypoint x="420" y="340" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF2_di" bpmnElement="SF2"><omgdi:waypoint x="420" y="340" /><omgdi:waypoint x="558" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF3_di" bpmnElement="SF3"><omgdi:waypoint x="558" y="520" /><omgdi:waypoint x="690" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF4_di" bpmnElement="SF4"><omgdi:waypoint x="690" y="520" /><omgdi:waypoint x="825" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF5_di" bpmnElement="SF5"><omgdi:waypoint x="825" y="520" /><omgdi:waypoint x="640" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF6_di" bpmnElement="SF6"><omgdi:waypoint x="640" y="640" /><omgdi:waypoint x="778" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF7_di" bpmnElement="SF7"><omgdi:waypoint x="825" y="520" /><omgdi:waypoint x="970" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF8_di" bpmnElement="SF8"><omgdi:waypoint x="970" y="520" /><omgdi:waypoint x="1095" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF17_di" bpmnElement="SF17"><omgdi:waypoint x="1095" y="520" /><omgdi:waypoint x="1258" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF18_di" bpmnElement="SF18"><omgdi:waypoint x="1095" y="520" /><omgdi:waypoint x="1345" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF19_di" bpmnElement="SF19"><omgdi:waypoint x="1095" y="520" /><omgdi:waypoint x="1510" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF9_di" bpmnElement="SF9"><omgdi:waypoint x="1258" y="520" /><omgdi:waypoint x="1345" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF10_di" bpmnElement="SF10"><omgdi:waypoint x="1345" y="520" /><omgdi:waypoint x="1690" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF11_di" bpmnElement="SF11"><omgdi:waypoint x="1690" y="520" /><omgdi:waypoint x="1690" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF12_di" bpmnElement="SF12"><omgdi:waypoint x="1690" y="820" /><omgdi:waypoint x="1848" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF13_di" bpmnElement="SF13"><omgdi:waypoint x="1345" y="520" /><omgdi:waypoint x="1345" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF14_di" bpmnElement="SF14"><omgdi:waypoint x="1345" y="665" /><omgdi:waypoint x="1345" y="705" /><omgdi:waypoint x="970" y="705" /><omgdi:waypoint x="970" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF15_di" bpmnElement="SF15"><omgdi:waypoint x="1345" y="640" /><omgdi:waypoint x="1510" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="SF16_di" bpmnElement="SF16"><omgdi:waypoint x="1510" y="640" /><omgdi:waypoint x="1658" y="640" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF1_di" bpmnElement="MF1"><omgdi:waypoint x="970" y="560" /><omgdi:waypoint x="970" y="960" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF2_di" bpmnElement="MF2"><omgdi:waypoint x="970" y="1060" /><omgdi:waypoint x="970" y="1100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF3_di" bpmnElement="MF3"><omgdi:waypoint x="1118" y="1100" /><omgdi:waypoint x="1900" y="1100" /><omgdi:waypoint x="1900" y="460" /><omgdi:waypoint x="1240" y="460" /><omgdi:waypoint x="1240" y="502" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>
